@@ -4,7 +4,7 @@ Backend em **NestJS** que consome a [Marketing API do Meta (Facebook)](https://d
 
 ## Requisitos
 
-- Node.js 18+
+- Node.js 24
 - Conta Meta com permissão de anúncios e um [App](https://developers.facebook.com/apps/) com permissões `ads_read` e `ads_management`
 
 ## Configuração
