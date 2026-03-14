@@ -15,13 +15,13 @@ Backend em **NestJS** que consome a [Marketing API do Meta (Facebook)](https://d
 npm install
 ```
 
-2. Crie um arquivo `.env` na raiz (copie de `.env.example`):
+1. Crie um arquivo `.env` na raiz (copie de `.env.example`):
 
 ```bash
 cp .env.example .env
 ```
 
-3. Defina o token de acesso do Facebook no `.env`:
+1. Defina o token de acesso do Facebook no `.env`:
 
 ```env
 FACEBOOK_ACCESS_TOKEN=seu_token_aqui
@@ -45,6 +45,7 @@ Por padrão o servidor sobe em `http://localhost:3000`.
 
 Base URL: `http://localhost:3000/facebook`
 
+
 | Método | Rota                                    | Descrição                                               |
 | ------ | --------------------------------------- | ------------------------------------------------------- |
 | GET    | `/facebook/accounts`                    | Lista contas de anúncios do usuário                     |
@@ -52,26 +53,27 @@ Base URL: `http://localhost:3000/facebook`
 | GET    | `/facebook/insights`                    | Métricas agregadas (KPIs) para o período                |
 | GET    | `/facebook/insights/daily`              | Dados diários para gráficos (investimento e impressões) |
 
+
 ### Query params para `/facebook/insights` e `/facebook/insights/daily`
 
 - **accountId** (opcional): ID da conta (ex: `act_123456789`). Se omitido, usa a primeira conta.
 - **campaignId** (opcional): ID da campanha para filtrar.
-- **datePreset**: `today` \| `yesterday` \| `last_7d` \| `last_14d` \| `last_30d` \| `this_month` \| `last_month` \| `maximum`
+- **datePreset**: `today`  `yesterday`  `last_7d`  `last_14d`  `last_30d`  `this_month`  `last_month`  `maximum`
 - **dateStart** / **dateEnd**: Período customizado (YYYY-MM-DD). Usado quando `datePreset` não é enviado.
 
 ### Exemplo de resposta – `/facebook/insights`
 
 ```json
 {
-  "valorUsado": 315.9,
-  "resultados": 11,
-  "custoPorResultado": 28.72,
-  "alcance": 6525,
-  "impressoes": 8599,
-  "cliquesNoLink": 105,
-  "ctr": 1.22,
-  "cpm": 36.74,
-  "frequencia": 1.32
+  "usedValue": 24.64,
+  "results": 11,
+  "costPerResult": 2.24,
+  "reach": 667,
+  "impressions": 795,
+  "linkClicks": 11,
+  "ctr": 3.773585,
+  "cpm": 30.993711,
+  "frequency": 1.191904
 }
 ```
 
