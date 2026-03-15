@@ -1,1 +1,1 @@
-export * from "./insights-query.dto";
+export * from './insights-query.dto'

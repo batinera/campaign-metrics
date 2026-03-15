@@ -1,78 +1,60 @@
-import {
-  Controller,
-  Get,
-  Query,
-  HttpException,
-  HttpStatus,
-} from "@nestjs/common";
-import { FacebookService } from "../service";
-import { InsightsQueryDto } from "../dto";
+import { Controller, Get, Query, HttpException, HttpStatus } from '@nestjs/common'
+import { FacebookService } from '../service'
+import { InsightsQueryDto } from '../dto'
 
-@Controller("facebook")
+@Controller('facebook')
 export class FacebookController {
   constructor(private readonly facebookService: FacebookService) {}
 
-  @Get("accounts")
+  @Get('accounts')
   async getAccounts() {
     try {
-      return await this.facebookService.getAdAccounts();
+      return await this.facebookService.getAdAccounts()
     } catch (e) {
-      throw new HttpException(
-        e?.message ?? "Error on listing accounts",
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException(e?.message ?? 'Error on listing accounts', HttpStatus.BAD_GATEWAY)
     }
   }
 
-  @Get("campaigns")
-  async getCampaigns(@Query("accountId") accountId?: string) {
+  @Get('campaigns')
+  async getCampaigns(@Query('accountId') accountId?: string) {
     try {
-      return await this.facebookService.getCampaigns(accountId);
+      return await this.facebookService.getCampaigns(accountId)
     } catch (e) {
-      throw new HttpException(
-        e?.message ?? "Error on listing campaigns",
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException(e?.message ?? 'Error on listing campaigns', HttpStatus.BAD_GATEWAY)
     }
   }
 
-  @Get("insights")
+  @Get('insights')
   async getInsights(@Query() query: InsightsQueryDto) {
     try {
-      const rows = await this.facebookService.getInsights(query);
+      const rows = await this.facebookService.getInsights(query)
 
-      return this.facebookService.toCampaignMetrics(rows);
+      return this.facebookService.toCampaignMetrics(rows)
     } catch (e) {
-      throw new HttpException(
-        e?.message ?? "Error on getting insights",
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException(e?.message ?? 'Error on getting insights', HttpStatus.BAD_GATEWAY)
     }
   }
 
-  @Get("insights/raw")
+  @Get('insights/raw')
   async getInsightsRaw(@Query() query: InsightsQueryDto) {
     try {
-      return await this.facebookService.getInsightsRaw(query);
+      return await this.facebookService.getInsightsRaw(query)
     } catch (e) {
-      throw new HttpException(
-        e?.message ?? "Error on getting raw insights",
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new HttpException(e?.message ?? 'Error on getting raw insights', HttpStatus.BAD_GATEWAY)
     }
   }
 
-  @Get("insights/daily")
+  @Get('insights/daily')
   async getInsightsDaily(@Query() query: InsightsQueryDto) {
     try {
-      const rows = await this.facebookService.getInsightsDaily(query);
+      const rows = await this.facebookService.getInsightsDaily(query)
 
-      return this.facebookService.toDailyChart(rows);
+      return this.facebookService.toDailyChart(rows)
     } catch (e) {
       throw new HttpException(
-        e?.message ?? "Error on getting daily insights",
+        e?.message ?? 'Error on getting daily insights',
         HttpStatus.BAD_GATEWAY,
-      );
+      )
     }
   }
 }

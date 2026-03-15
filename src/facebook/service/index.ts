@@ -1,1 +1,1 @@
-export * from "./facebook.service";
+export * from './facebook.service'

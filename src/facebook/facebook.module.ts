@@ -1,6 +1,6 @@
-import { Module } from "@nestjs/common";
-import { FacebookController } from "./controller";
-import { FacebookService } from "./service";
+import { Module } from '@nestjs/common'
+import { FacebookController } from './controller'
+import { FacebookService } from './service'
 
 @Module({
   controllers: [FacebookController],
