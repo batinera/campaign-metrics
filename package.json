@@ -7,7 +7,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main"
+    "start:prod": "node dist/main",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
@@ -18,16 +19,27 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "husky": "^9.1.7",
-    "prettier": "^3.8.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@eslint/compat": "^2.0.3",
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@types/express": "^5.0.0",
+    "@types/minimatch": "^6.0.0",
     "@types/node": "^22.10.2",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
+    "eslint": "^10.0.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-json-format": "^2.0.1",
+    "eslint-plugin-prettier": "^5.5.5",
+    "globals": "^17.4.0",
     "jest": "^30.3.0",
+    "prettier": "^3.8.1",
     "typescript": "^5.7.2"
   }
 }

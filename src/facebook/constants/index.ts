@@ -1,1 +1,1 @@
-export * from "./facebook.constants";
+export * from './facebook.constants'
