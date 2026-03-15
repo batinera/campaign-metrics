@@ -11,7 +11,6 @@ export class FacebookController {
     try {
       return await this.facebookService.getAdAccounts()
     } catch (e) {
-      console.log('teste')
       throw new HttpException(e?.message ?? 'Error on listing accounts', HttpStatus.BAD_GATEWAY)
     }
   }
