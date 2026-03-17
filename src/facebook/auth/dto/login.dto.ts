@@ -13,10 +13,10 @@ export class LoginDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(8, { message: 'A senha deve ter no mínimo 8 caracteres' })
+  @MinLength(8, { message: 'The password must be at least 8 characters long' })
   @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
     message:
-      'A senha é muito fraca. Ela deve conter letras maiúsculas, números e caracteres especiais',
+      'The password is too weak. It must contain uppercase letters, numbers, and special characters',
   })
   password: string
 }
