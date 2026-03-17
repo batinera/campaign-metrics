@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
-import { DataSource } from 'typeorm'
-import { User } from '../facebook/auth/entity/user.entity'
 import * as bcrypt from 'bcrypt'
 import * as dotenv from 'dotenv'
+import { DataSource } from 'typeorm'
+import { User } from '@/facebook/auth/entity'
 
 dotenv.config()
 

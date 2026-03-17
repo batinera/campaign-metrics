@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { FacebookModule } from 'src/facebook/facebook.module'
-import { User } from 'src/facebook/auth/entity'
+import { User } from '@/facebook/auth/entity'
+import { FacebookModule } from '@/facebook/facebook.module'
 
 @Module({
   imports: [

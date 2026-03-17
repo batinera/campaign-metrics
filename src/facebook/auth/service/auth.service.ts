@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
 import * as bcrypt from 'bcrypt'
-import { LoginDto } from 'src/facebook/auth/dto'
-import { User } from 'src/facebook/auth/entity'
-import { ErrorCode } from 'src/common/enums'
+import { Repository } from 'typeorm'
+import { ErrorCode } from '@/common/enums'
+import { LoginDto } from '@/facebook/auth/dto'
+import { User } from '@/facebook/auth/entity'
 
 @Injectable()
 export class AuthService {

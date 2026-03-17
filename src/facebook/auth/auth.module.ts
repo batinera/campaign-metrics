@@ -3,10 +3,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { AuthController } from 'src/facebook/auth/controller'
-import { AuthService } from 'src/facebook/auth/service'
-import { JwtStrategy } from 'src/facebook/auth/jwt.strategy'
-import { User } from 'src/facebook/auth/entity'
+import { AuthController } from '@/facebook/auth/controller'
+import { User } from '@/facebook/auth/entity'
+import { JwtStrategy } from '@/facebook/auth/jwt.strategy'
+import { AuthService } from '@/facebook/auth/service'
 
 @Module({
   imports: [

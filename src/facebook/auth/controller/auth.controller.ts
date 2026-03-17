@@ -1,6 +1,6 @@
-import { Controller, Post, Body } from '@nestjs/common'
-import { AuthService } from 'src/facebook/auth/service'
-import { LoginDto } from 'src/facebook/auth/dto'
+import { Body, Controller, Post } from '@nestjs/common'
+import { LoginDto } from '@/facebook/auth/dto'
+import { AuthService } from '@/facebook/auth/service'
 
 @Controller('auth')
 export class AuthController {

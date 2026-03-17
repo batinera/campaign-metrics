@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios, { AxiosInstance } from 'axios'
-import { GRAPH_API_BASE, INSIGHTS_FIELDS } from '../constants/facebook.constants'
-import type { InsightsQueryDto } from '../dto'
+import { GRAPH_API_BASE, INSIGHTS_FIELDS } from '@/facebook/constants'
+import type { InsightsQueryDto } from '@/facebook/dto'
 
 export interface AdAccount {
   id: string

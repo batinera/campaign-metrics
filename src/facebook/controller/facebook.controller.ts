@@ -1,8 +1,8 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common'
-import { FacebookService } from '../service'
-import { InsightsQueryDto } from '../dto'
-import { JwtAuthGuard } from '../auth'
-import { ErrorCode } from '../../common/enums/error-code.enum'
+import { ErrorCode } from '@/common/enums'
+import { JwtAuthGuard } from '@/facebook/auth'
+import { InsightsQueryDto } from '@/facebook/dto'
+import { FacebookService } from '@/facebook/service'
 
 @Controller('facebook')
 @UseGuards(JwtAuthGuard)
