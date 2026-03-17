@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common'
-import { FacebookController } from './controller'
-import { FacebookService } from './service'
+import { AuthModule } from '@/facebook/auth'
+import { FacebookController } from '@/facebook/controller'
+import { FacebookService } from '@/facebook/service'
 
 @Module({
+  imports: [AuthModule],
   controllers: [FacebookController],
   providers: [FacebookService],
   exports: [FacebookService],

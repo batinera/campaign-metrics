@@ -1,97 +1,83 @@
-# Campaign Metrics – Backend
+# Campaign Metrics API 📊
 
-Backend em **NestJS** que consome a [Marketing API do Meta (Facebook)](https://developers.facebook.com/docs/marketing-api) para expor métricas de campanhas de anúncios ao frontend.
+Backend NestJS para extração e agregação de métricas do Meta Ads (Facebook Ads). Focado em fornecer dados limpos para dashboards de performance.
 
-## Requisitos
+## 🚀 Configuração Rápida
 
-- Node.js 24
-- Conta Meta com permissão de anúncios e um [App](https://developers.facebook.com/apps/) com permissões `ads_read` e `ads_management`
+1. **Instale as dependências:**
 
-## Configuração
+   ```bash
+   npm install
+   ```
 
-1. Clone o repositório e instale as dependências:
+2. **Configure o ambiente:**
+   Crie um arquivo `.env` na raiz baseado no `.env.example`:
 
-```bash
-npm install
-```
+   ```env
+   FACEBOOK_ACCESS_TOKEN=seu_token_aqui
+   JWT_SECRET=seu_segredo_para_gerar_tokens
+   PORT=3000
+   ```
 
-1. Crie um arquivo `.env` na raiz (copie de `.env.example`):
+3. **Inicie o servidor:**
+   ```bash
+   npm run start:dev
+   ```
 
-```bash
-cp .env.example .env
-```
+---
 
-1. Defina o token de acesso do Facebook no `.env`:
+## 🔐 Autenticação
 
-```env
-FACEBOOK_ACCESS_TOKEN=seu_token_aqui
-```
+A API utiliza **JWT (JSON Web Token)**. Para acessar os endpoints de métricas, você deve primeiro obter um token.
 
-**Importante:** não commite o `.env` com o token. O token pode ser obtido no [Graph API Explorer](https://developers.facebook.com/tools/explorer/) (com o app e as permissões corretas).
+### 1. Obter Token
 
-## Executando
+**POST** `/auth/login`
 
-```bash
-# desenvolvimento (watch)
-npm run start:dev
+- **Body:** `{"username": "seu_usuario"}`
+- **Retorno:** `{"access_token": "eyJhbG..."}`
 
-# produção
-npm run build && npm run start:prod
-```
+> _Nota: Atualmente o login aceita qualquer usuário para fins de desenvolvimento._
 
-Por padrão o servidor sobe em `http://localhost:3000`.
+### 2. Utilizar Token
 
-## API
+Em todas as requisições para `/facebook/*`, envie o cabeçalho:
+`Authorization: Bearer <seu_access_token>`
 
-Base URL: `http://localhost:3000/facebook`
+---
 
+## 📡 Endpoints Disponíveis
 
-| Método | Rota                                    | Descrição                                               |
-| ------ | --------------------------------------- | ------------------------------------------------------- |
-| GET    | `/facebook/accounts`                    | Lista contas de anúncios do usuário                     |
-| GET    | `/facebook/campaigns?accountId=act_XXX` | Lista campanhas de uma conta                            |
-| GET    | `/facebook/insights`                    | Métricas agregadas (KPIs) para o período                |
-| GET    | `/facebook/insights/daily`              | Dados diários para gráficos (investimento e impressões) |
+Todos os endpoints abaixo aceitam os filtros de data:
 
+- `datePreset`: `today`, `yesterday`, `last_7d`, `last_30d`, etc.
+- `dateStart` e `dateEnd`: No formato `YYYY-MM-DD` para períodos personalizados.
 
-### Query params para `/facebook/insights` e `/facebook/insights/daily`
+### 1. Listar Contas
 
-- **accountId** (opcional): ID da conta (ex: `act_123456789`). Se omitido, usa a primeira conta.
-- **campaignId** (opcional): ID da campanha para filtrar.
-- **datePreset**: `today`  `yesterday`  `last_7d`  `last_14d`  `last_30d`  `this_month`  `last_month`  `maximum`
-- **dateStart** / **dateEnd**: Período customizado (YYYY-MM-DD). Usado quando `datePreset` não é enviado.
+**GET** `/facebook/accounts`
 
-### Exemplo de resposta – `/facebook/insights`
+- Retorna todas as contas de anúncios vinculadas ao token. Útil para preencher filtros de "Seleção de Cliente" no Admin.
 
-```json
-{
-  "usedValue": 24.64,
-  "results": 11,
-  "costPerResult": 2.24,
-  "reach": 667,
-  "impressions": 795,
-  "linkClicks": 11,
-  "ctr": 3.773585,
-  "cpm": 30.993711,
-  "frequency": 1.191904
-}
-```
+### 2. Resumo de Métricas (Cards)
 
-### Exemplo de resposta – `/facebook/insights/daily`
+**GET** `/facebook/metrics`
 
-```json
-[
-  { "date": "2025-03-06", "spend": 40.5, "impressions": 1200 },
-  { "date": "2025-03-07", "spend": 55.2, "impressions": 1500 }
-]
-```
+- **Query Params:** `accountId` (opcional), `datePreset`, `dateStart`, `dateEnd`.
+- **Com `accountId`**: Retorna métricas de uma conta específica.
+- **Sem `accountId`**: Retorna a **soma de todas as contas** (Visão Agregada Admin).
+- **Retorno:** `spend`, `results` (Cliques no link), `cpa`, `reach`, `impressions`, `ctr`, `cpm`.
 
-## Documentação Meta
+### 3. Dados para Gráfico
 
-- [Marketing API – Overview](https://developers.facebook.com/docs/marketing-api/overview)
-- [Insights API](https://developers.facebook.com/docs/marketing-api/insights)
-- [Graph API](https://developers.facebook.com/docs/graph-api/overview)
+**GET** `/facebook/chart`
 
-## Licença
+- **Query Params:** Mesmos do endpoint de metrics.
+- **Retorno:** Lista de objetos contendo `date`, `spend` e `impressions` agrupados por dia.
 
-MIT
+---
+
+## 🛠 Comandos Úteis
+
+- `npm run build`: Compila o projeto.
+- `npm run lint`: Executa o linter para verificar padrões de código.
