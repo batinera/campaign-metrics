@@ -1,7 +1,13 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common'
 import { ErrorCode } from '@/common/enums'
 import { JwtAuthGuard } from '@/facebook/auth'
-import { InsightsQueryDto } from '@/facebook/dto'
+import {
+  InsightsQueryDto,
+  AdAccountDto,
+  CampaignWithAdSetsDto,
+  AdsByAdSetDto,
+  PerformanceDto,
+} from '@/facebook/dto'
 import { FacebookService } from '@/facebook/service'
 
 @Controller('facebook')
@@ -10,7 +16,7 @@ export class FacebookController {
   constructor(private readonly facebookService: FacebookService) {}
 
   @Get('accounts')
-  async getAccounts() {
+  async getAccounts(): Promise<AdAccountDto[]> {
     try {
       return await this.facebookService.getAdAccounts()
     } catch {
@@ -18,21 +24,28 @@ export class FacebookController {
     }
   }
 
-  @Get('metrics')
-  async getMetrics(@Query() query: InsightsQueryDto) {
+  @Get('campaigns')
+  async getCampaigns(@Query() query: InsightsQueryDto): Promise<CampaignWithAdSetsDto[]> {
     try {
-      const rows = await this.facebookService.getInsights(query)
-      return this.facebookService.toSummaryMetrics(rows)
+      return await this.facebookService.getCampaigns(query)
     } catch {
       throw ErrorCode.FB_API_ERROR
     }
   }
 
-  @Get('chart')
-  async getChart(@Query() query: InsightsQueryDto) {
+  @Get('ads')
+  async getAds(@Query() query: InsightsQueryDto): Promise<AdsByAdSetDto[]> {
     try {
-      const rows = await this.facebookService.getInsightsDaily(query)
-      return this.facebookService.toDailyChart(rows)
+      return await this.facebookService.getAds(query)
+    } catch {
+      throw ErrorCode.FB_API_ERROR
+    }
+  }
+
+  @Get('performance')
+  async getPerformance(@Query() query: InsightsQueryDto): Promise<PerformanceDto> {
+    try {
+      return await this.facebookService.getPerformanceData(query)
     } catch {
       throw ErrorCode.FB_API_ERROR
     }
