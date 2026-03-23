@@ -1,1 +1,7 @@
 export * from './insights-query.dto'
+export * from './ad-account.dto'
+export * from './ad-set.dto'
+export * from './campaign.dto'
+export * from './ad.dto'
+export * from './performance.dto'
+export * from './level.dto'
