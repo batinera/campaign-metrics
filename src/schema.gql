@@ -1,0 +1,131 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type Ad {
+  adset_id: String!
+  campaign_id: String!
+  created_time: String!
+  creative: AdCreative
+  id: String!
+  name: String!
+  status: String!
+}
+
+type AdAccount {
+  accountId: String!
+  currency: String
+  id: String!
+  name: String!
+}
+
+type AdCreative {
+  body: String
+  id: String!
+  image_url: String
+  name: String
+  thumbnail_url: String
+  video_id: String
+}
+
+type AdSet {
+  ads: [Ad!]!
+  campaign_id: String!
+  chart: [DailyChartPoint!]!
+  id: String!
+  name: String!
+  status: String!
+  summary: SummaryMetrics
+}
+
+type Campaign {
+  account_id: String!
+  adSets: [AdSet!]!
+  chart: [DailyChartPoint!]!
+  created_time: String!
+  id: String!
+  name: String!
+  status: String!
+  summary: SummaryMetrics
+}
+
+input CampaignFilterInput {
+  accountId: String
+  campaignId: String
+  campaignIds: [String!]
+
+  """End date in YYYY-MM-DD format"""
+  dateEnd: String
+  datePreset: DatePresetEnum
+
+  """Start date in YYYY-MM-DD format"""
+  dateStart: String
+  sortBy: SortByEnum = CREATED_TIME
+  sortOrder: SortOrderEnum = DESC
+  status: StatusEnum
+}
+
+type CampaignRef {
+  id: String!
+  name: String!
+}
+
+type DailyChartPoint {
+  date: String!
+  impressions: Float!
+  spend: Float!
+}
+
+"""Predefined date ranges"""
+enum DatePresetEnum {
+  LAST_7D
+  LAST_14D
+  LAST_30D
+  LAST_MONTH
+  MAXIMUM
+  THIS_MONTH
+  TODAY
+  YESTERDAY
+}
+
+type Query {
+  accounts: [AdAccount!]!
+  campaigns(filter: CampaignFilterInput): [Campaign!]!
+}
+
+"""Sort by field"""
+enum SortByEnum {
+  CREATED_TIME
+  NAME
+}
+
+"""Sort order direction"""
+enum SortOrderEnum {
+  ASC
+  DESC
+}
+
+"""Status of campaign, ad set or ad"""
+enum StatusEnum {
+  ACTIVE
+  ARCHIVED
+  DELETED
+  PAUSED
+}
+
+type SummaryDetails {
+  account_id: String
+  account_name: String
+  campaigns: [CampaignRef!]
+}
+
+type SummaryMetrics {
+  cpa: Float!
+  cpm: Float!
+  ctr: Float!
+  details: SummaryDetails
+  impressions: Float!
+  reach: Float!
+  results: Float!
+  spend: Float!
+}

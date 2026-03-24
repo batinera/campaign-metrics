@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common'
 import { AuthModule } from '@/facebook/auth'
-import { FacebookController } from '@/facebook/controller'
-import { FacebookService } from '@/facebook/service'
+import { FacebookResolver } from '@/facebook/resolver/facebook.resolver'
+import { FacebookService, FacebookAPIHelper, FacebookInsightsService } from '@/facebook/service'
+import '@/facebook/graphql/enums'
 
 @Module({
   imports: [AuthModule],
-  controllers: [FacebookController],
-  providers: [FacebookService],
+  providers: [FacebookResolver, FacebookService, FacebookAPIHelper, FacebookInsightsService],
   exports: [FacebookService],
 })
 export class FacebookModule {}

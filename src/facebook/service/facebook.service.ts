@@ -1,410 +1,400 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import axios, { AxiosInstance } from 'axios'
-import {
-  GRAPH_API_BASE,
-  INSIGHTS_FIELDS,
-  INSIGHTS_FIELDS_ADSET,
-  AD_FIELDS,
-  CAMPAIGN_FIELDS,
-  DAILY_INSIGHTS_FIELDS,
-  DAILY_INSIGHTS_FIELDS_ADSET,
-  ADSET_FIELDS,
-} from '@/facebook/constants'
+import { ErrorCode } from '@/common/enums'
+import { FacebookAPIHelper } from './facebook-api.helper'
+import { FacebookInsightsService } from './facebook-insights.service'
+import { CAMPAIGN_FIELDS, ADSET_FIELDS, AD_FIELDS } from '@/facebook/constants'
 import {
   InsightsQueryDto,
   AdAccountDto,
   CampaignDto,
-  CampaignWithAdSetsDto,
   AdSetDto,
   AdDto,
-  AdsByAdSetDto,
-  PerformanceDto,
   SummaryMetricsDto,
   DailyChartPointDto,
-  LevelDto,
 } from '@/facebook/dto'
-
-export interface InsightRow {
-  date_start?: string
-  date_stop?: string
-  spend?: string
-  impressions?: string
-  reach?: string
-  campaign_id?: string
-  campaign_name?: string
-  adset_id?: string
-  adset_name?: string
-  account_id?: string
-  account_name?: string
-  actions?: { action_type: string; value: string }[]
-}
 
 @Injectable()
 export class FacebookService {
   private readonly logger = new Logger(FacebookService.name)
-  private readonly client: AxiosInstance
-  private readonly accessToken: string
 
-  constructor(private readonly config: ConfigService) {
-    this.accessToken = this.config.get<string>('FACEBOOK_ACCESS_TOKEN', '')
-    this.client = axios.create({
-      baseURL: GRAPH_API_BASE,
-      timeout: 30000,
-      params: { access_token: this.accessToken },
-    })
-  }
+  constructor(
+    private readonly apiHelper: FacebookAPIHelper,
+    private readonly insightsService: FacebookInsightsService,
+  ) {}
 
   async getAdAccounts(): Promise<AdAccountDto[]> {
-    const { data } = await this.client.get<{ data: AdAccountDto[] }>('/me/adaccounts', {
-      params: { fields: 'id,account_id,name,currency' },
+    const accounts = await this.apiHelper.fetchList<AdAccountDto>('/me/adaccounts', {
+      fields: 'id,account_id,name,currency',
     })
-    return data.data ?? []
+
+    if (accounts.length === 0) {
+      throw ErrorCode.ACCOUNT_NOT_FOUND
+    }
+
+    return accounts
   }
 
-  async getCampaigns(dto: InsightsQueryDto = {}): Promise<CampaignWithAdSetsDto[]> {
-    const level = Object.assign(new LevelDto(), { campaigns: 'campaigns' })
-    const params = {
-      fields: CAMPAIGN_FIELDS,
-      ...this.filterParams(dto, level),
+  async getCampaignsWithFullHierarchy(dto: InsightsQueryDto = {}): Promise<
+    Array<
+      CampaignDto & {
+        summary: SummaryMetricsDto
+        chart: DailyChartPointDto[]
+        adSets: Array<
+          AdSetDto & {
+            summary: SummaryMetricsDto
+            chart: DailyChartPointDto[]
+            ads: AdDto[]
+          }
+        >
+      }
+    >
+  > {
+    const campaigns = await this.fetchCampaigns(dto)
+
+    const sorted = this.sortCampaigns(campaigns, dto)
+
+    if (dto.campaignId || (dto.campaignIds && dto.campaignIds.length > 0)) {
+      return this.buildHierarchyFromCampaigns(sorted, dto)
     }
-    const campaigns = await this.fetchFromAccounts<CampaignDto>(
-      '/campaigns',
-      params,
-      dto,
-      'campaigns',
+
+    return this.buildHierarchyFromAccount(sorted, dto)
+  }
+
+  private async fetchCampaigns(dto: InsightsQueryDto): Promise<CampaignDto[]> {
+    if (dto.campaignId) {
+      const campaign = await this.apiHelper.fetchRequired<CampaignDto>(`/${dto.campaignId}`, {
+        fields: CAMPAIGN_FIELDS,
+      })
+      return [campaign]
+    }
+
+    if (dto.campaignIds && dto.campaignIds.length > 0) {
+      const campaigns: CampaignDto[] = []
+      for (const id of dto.campaignIds) {
+        try {
+          const campaign = await this.apiHelper.fetchRequired<CampaignDto>(`/${id}`, {
+            fields: CAMPAIGN_FIELDS,
+          })
+          campaigns.push(campaign)
+        } catch (error) {
+          if (error === ErrorCode.CAMPAIGN_NOT_FOUND) {
+            this.logger.warn(`Campaign ${id} not found, skipping`)
+          } else {
+            throw error
+          }
+        }
+      }
+      if (campaigns.length === 0) {
+        throw ErrorCode.CAMPAIGN_NOT_FOUND
+      }
+      return campaigns
+    }
+
+    if (dto.accountId) {
+      return this.fetchCampaignsFromAccount(dto.accountId, dto)
+    }
+
+    const accounts = await this.getAdAccounts()
+    const allCampaigns: CampaignDto[] = []
+    for (const account of accounts) {
+      const campaigns = await this.fetchCampaignsFromAccount(account.id, dto)
+      allCampaigns.push(...campaigns)
+    }
+    return allCampaigns
+  }
+
+  private async fetchCampaignsFromAccount(
+    accountId: string,
+    dto: InsightsQueryDto,
+  ): Promise<CampaignDto[]> {
+    const params: Record<string, unknown> = { fields: CAMPAIGN_FIELDS }
+
+    if (dto.status) {
+      params.filtering = JSON.stringify([
+        { field: 'effective_status', operator: 'IN', value: [String(dto.status)] },
+      ])
+    }
+
+    return this.apiHelper.fetchList<CampaignDto>(`/${accountId}/campaigns`, params)
+  }
+
+  private async buildHierarchyFromCampaigns(
+    campaigns: CampaignDto[],
+    dto: InsightsQueryDto,
+  ): Promise<
+    Array<
+      CampaignDto & {
+        summary: SummaryMetricsDto
+        chart: DailyChartPointDto[]
+        adSets: Array<
+          AdSetDto & {
+            summary: SummaryMetricsDto
+            chart: DailyChartPointDto[]
+            ads: AdDto[]
+          }
+        >
+      }
+    >
+  > {
+    const adSetsByCampaign = await this.fetchAllAdSetsForCampaigns(campaigns, dto)
+    const allAdSets = Array.from(adSetsByCampaign.values()).flat()
+
+    const [campaignInsightsMap, adSetInsightsMap, adSetAdsMap] = await Promise.all([
+      this.fetchAllCampaignInsights(campaigns, dto),
+      this.fetchAllAdSetInsights(allAdSets, dto),
+      this.fetchAllAdsForAdSets(allAdSets, dto),
+    ])
+
+    return campaigns.map((campaign) => {
+      const campaignAdSets = adSetsByCampaign.get(campaign.id) ?? []
+      const insights = campaignInsightsMap.get(campaign.id)
+
+      const adSetsWithMetrics = campaignAdSets.map((adSet) => {
+        const adSetInsights = adSetInsightsMap.get(adSet.id)
+        return {
+          ...adSet,
+          summary: adSetInsights?.summary ?? this.insightsService.toSummaryMetrics([]),
+          chart: adSetInsights?.chart ?? [],
+          ads: adSetAdsMap.get(adSet.id) ?? [],
+        }
+      })
+
+      return {
+        ...campaign,
+        summary: insights?.summary ?? this.insightsService.toSummaryMetrics([]),
+        chart: insights?.chart ?? [],
+        adSets: adSetsWithMetrics,
+      }
+    })
+  }
+
+  private async buildHierarchyFromAccount(
+    campaigns: CampaignDto[],
+    dto: InsightsQueryDto,
+  ): Promise<
+    Array<
+      CampaignDto & {
+        summary: SummaryMetricsDto
+        chart: DailyChartPointDto[]
+        adSets: Array<
+          AdSetDto & {
+            summary: SummaryMetricsDto
+            chart: DailyChartPointDto[]
+            ads: AdDto[]
+          }
+        >
+      }
+    >
+  > {
+    if (campaigns.length === 0) {
+      return []
+    }
+
+    let accountId = dto.accountId
+    if (!accountId && campaigns[0]?.account_id) {
+      const rawId = campaigns[0].account_id
+      accountId = rawId.startsWith('act_') ? rawId : `act_${rawId}`
+    }
+    if (!accountId) {
+      throw ErrorCode.ACCOUNT_NOT_FOUND
+    }
+
+    const [summaryRows, dailyRows, allAdSets, allAds] = await Promise.all([
+      this.insightsService.getAccountInsights(accountId, dto, false),
+      this.insightsService.getAccountInsights(accountId, dto, true),
+      this.fetchAdSetsFromAccount(accountId, dto),
+      this.fetchAdsFromAccount(accountId, dto),
+    ])
+
+    const adSetInsightsMap = await this.fetchAllAdSetInsights(allAdSets, dto)
+
+    const adSetsByCampaign = this.groupBy(allAdSets, 'campaign_id')
+    const adsByAdSet = this.groupBy(allAds, 'adset_id')
+
+    return campaigns.map((campaign) => {
+      const campaignAdSets = adSetsByCampaign.get(campaign.id) ?? []
+      const campaignSummary = summaryRows.filter((r) => r.campaign_id === campaign.id)
+      const campaignDaily = dailyRows.filter((r) => r.campaign_id === campaign.id)
+
+      const adSetsWithMetrics = campaignAdSets.map((adSet) => {
+        const adSetInsights = adSetInsightsMap.get(adSet.id)
+        return {
+          ...adSet,
+          summary: adSetInsights?.summary ?? this.insightsService.toSummaryMetrics([]),
+          chart: adSetInsights?.chart ?? [],
+          ads: adsByAdSet.get(adSet.id) ?? [],
+        }
+      })
+
+      return {
+        ...campaign,
+        summary: this.insightsService.toSummaryMetrics(campaignSummary),
+        chart: this.insightsService.toDailyChart(campaignDaily),
+        adSets: adSetsWithMetrics,
+      }
+    })
+  }
+
+  private async fetchAdSetsForCampaign(
+    campaignId: string,
+    dto: InsightsQueryDto,
+  ): Promise<AdSetDto[]> {
+    const params: Record<string, unknown> = { fields: ADSET_FIELDS }
+
+    if (dto.status) {
+      params.filtering = JSON.stringify([
+        { field: 'effective_status', operator: 'IN', value: [String(dto.status)] },
+      ])
+    }
+
+    return this.apiHelper.fetchOptional<AdSetDto>(`/${campaignId}/adsets`, params)
+  }
+
+  private async fetchAdSetsFromAccount(
+    accountId: string,
+    dto: InsightsQueryDto,
+  ): Promise<AdSetDto[]> {
+    const params: Record<string, unknown> = { fields: ADSET_FIELDS }
+
+    if (dto.status) {
+      params.filtering = JSON.stringify([
+        { field: 'effective_status', operator: 'IN', value: [String(dto.status)] },
+      ])
+    }
+
+    return this.apiHelper.fetchList<AdSetDto>(`/${accountId}/adsets`, params)
+  }
+
+  private async fetchAdsForAdSet(adSetId: string, dto: InsightsQueryDto): Promise<AdDto[]> {
+    const params: Record<string, unknown> = { fields: AD_FIELDS }
+
+    if (dto.status) {
+      params.filtering = JSON.stringify([
+        { field: 'effective_status', operator: 'IN', value: [String(dto.status)] },
+      ])
+    }
+
+    return this.apiHelper.fetchOptional<AdDto>(`/${adSetId}/ads`, params)
+  }
+
+  private async fetchAdsFromAccount(accountId: string, dto: InsightsQueryDto): Promise<AdDto[]> {
+    const params: Record<string, unknown> = { fields: AD_FIELDS }
+
+    if (dto.status) {
+      params.filtering = JSON.stringify([
+        { field: 'effective_status', operator: 'IN', value: [String(dto.status)] },
+      ])
+    }
+
+    return this.apiHelper.fetchList<AdDto>(`/${accountId}/ads`, params)
+  }
+
+  private async fetchAllAdSetsForCampaigns(
+    campaigns: CampaignDto[],
+    dto: InsightsQueryDto,
+  ): Promise<Map<string, AdSetDto[]>> {
+    const results = await Promise.all(
+      campaigns.map(async (campaign) => ({
+        campaignId: campaign.id,
+        adSets: await this.fetchAdSetsForCampaign(campaign.id, dto),
+      })),
     )
-    const sortedCampaigns = this.sortItems(campaigns, dto)
-    const adSetParams = {
-      fields: ADSET_FIELDS,
-      ...this.filterParams(dto, Object.assign(new LevelDto(), { ad: 'ad' })),
-    }
-    const adSets = await this.fetchFromAccounts<AdSetDto>('/adsets', adSetParams, dto, 'adsets')
-    const adSetsByCampaign = this.groupAdSetsByCampaign(adSets)
-    return sortedCampaigns.map((c) => ({
-      ...c,
-      adSets: adSetsByCampaign.get(c.id) ?? [],
-    }))
-  }
 
-  private groupAdSetsByCampaign(adSets: AdSetDto[]): Map<string, AdSetDto[]> {
     const map = new Map<string, AdSetDto[]>()
-    for (const as of adSets) {
-      const list = map.get(as.campaign_id) ?? []
-      list.push(as)
-      map.set(as.campaign_id, list)
+    for (const { campaignId, adSets } of results) {
+      map.set(campaignId, adSets)
     }
     return map
   }
 
-  private async fetchFromAccounts<T>(
-    path: string,
-    params: Record<string, unknown>,
+  private async fetchAllCampaignInsights(
+    campaigns: CampaignDto[],
     dto: InsightsQueryDto,
-    resourceLabel: string,
-  ): Promise<T[]> {
-    if (dto.accountId) {
-      const { data } = await this.client.get<{ data: T[] }>(`/${dto.accountId}${path}`, { params })
-      return data.data ?? []
-    }
+  ): Promise<Map<string, { summary: SummaryMetricsDto; chart: DailyChartPointDto[] }>> {
+    const results = await Promise.all(
+      campaigns.map(async (campaign) => {
+        const [summaryRows, dailyRows] = await Promise.all([
+          this.insightsService.getCampaignInsights(campaign.id, dto, false),
+          this.insightsService.getCampaignInsights(campaign.id, dto, true),
+        ])
+        return {
+          campaignId: campaign.id,
+          summary: this.insightsService.toSummaryMetrics(summaryRows),
+          chart: this.insightsService.toDailyChart(dailyRows),
+        }
+      }),
+    )
 
-    const accounts = await this.getAdAccounts()
-    const results: T[] = []
-
-    for (const acc of accounts) {
-      try {
-        const { data } = await this.client.get<{ data: T[] }>(`/${acc.id}${path}`, { params })
-        if (data.data) results.push(...data.data)
-      } catch (e) {
-        this.logger.error(`Error fetching ${resourceLabel} for account ${acc.id}: ${e.message}`)
-      }
+    const map = new Map<string, { summary: SummaryMetricsDto; chart: DailyChartPointDto[] }>()
+    for (const { campaignId, summary, chart } of results) {
+      map.set(campaignId, { summary, chart })
     }
-    return results
+    return map
   }
 
-  private sortItems<T extends { name: string; created_time: string }>(
-    items: T[],
+  private async fetchAllAdSetInsights(
+    adSets: AdSetDto[],
     dto: InsightsQueryDto,
-  ): T[] {
+  ): Promise<Map<string, { summary: SummaryMetricsDto; chart: DailyChartPointDto[] }>> {
+    const results = await Promise.all(
+      adSets.map(async (adSet) => {
+        const [summaryRows, dailyRows] = await Promise.all([
+          this.insightsService.getAdSetInsights(adSet.id, dto, false),
+          this.insightsService.getAdSetInsights(adSet.id, dto, true),
+        ])
+        return {
+          adSetId: adSet.id,
+          summary: this.insightsService.toSummaryMetrics(summaryRows),
+          chart: this.insightsService.toDailyChart(dailyRows),
+        }
+      }),
+    )
+
+    const map = new Map<string, { summary: SummaryMetricsDto; chart: DailyChartPointDto[] }>()
+    for (const { adSetId, summary, chart } of results) {
+      map.set(adSetId, { summary, chart })
+    }
+    return map
+  }
+
+  private async fetchAllAdsForAdSets(
+    adSets: AdSetDto[],
+    dto: InsightsQueryDto,
+  ): Promise<Map<string, AdDto[]>> {
+    const results = await Promise.all(
+      adSets.map(async (adSet) => ({
+        adSetId: adSet.id,
+        ads: await this.fetchAdsForAdSet(adSet.id, dto),
+      })),
+    )
+
+    const map = new Map<string, AdDto[]>()
+    for (const { adSetId, ads } of results) {
+      map.set(adSetId, ads)
+    }
+    return map
+  }
+
+  private sortCampaigns(campaigns: CampaignDto[], dto: InsightsQueryDto): CampaignDto[] {
     const { sortBy = 'created_time', sortOrder = 'desc' } = dto
 
-    return items.sort((a, b) => {
-      let comparison = 0
-      if (sortBy === 'name') {
-        comparison = a.name.localeCompare(b.name)
-      } else {
-        comparison = new Date(a.created_time).getTime() - new Date(b.created_time).getTime()
-      }
+    return campaigns.sort((a, b) => {
+      const comparison =
+        sortBy === 'name'
+          ? a.name.localeCompare(b.name)
+          : new Date(a.created_time).getTime() - new Date(b.created_time).getTime()
       return sortOrder === 'desc' ? -comparison : comparison
     })
   }
 
-  private timeParams(dto: InsightsQueryDto): Record<string, string | number | object> {
-    if (dto.datePreset) return { date_preset: dto.datePreset }
-    if (dto.dateStart && dto.dateEnd) {
-      return { time_range: JSON.stringify({ since: dto.dateStart, until: dto.dateEnd }) }
+  private groupBy<T>(items: T[], key: keyof T): Map<string, T[]> {
+    const map = new Map<string, T[]>()
+    for (const item of items) {
+      const value = String(item[key])
+      const list = map.get(value) ?? []
+      list.push(item)
+      map.set(value, list)
     }
-    return { date_preset: 'last_7d' }
-  }
-
-  private filterParams(dto: InsightsQueryDto, level: LevelDto): Record<string, string> {
-    const filters: Array<{ field: string; operator: string; value: string[] }> = []
-
-    const idField = level.campaigns ? 'id' : 'campaign.id'
-    if (dto.campaignId) {
-      filters.push({ field: idField, operator: 'IN', value: [dto.campaignId] })
-    }
-
-    if (dto.campaignIds && dto.campaignIds.length > 0) {
-      filters.push({ field: idField, operator: 'IN', value: dto.campaignIds })
-    }
-
-    if (dto.status) {
-      const statusField =
-        level.ad || level.campaigns ? 'effective_status' : 'campaign.effective_status'
-      filters.push({ field: statusField, operator: 'IN', value: [String(dto.status)] })
-    }
-
-    return filters.length > 0 ? { filtering: JSON.stringify(filters) } : {}
-  }
-
-  async getInsights(dto: InsightsQueryDto): Promise<InsightRow[]> {
-    return this.getInsightRows(dto, { daily: false })
-  }
-
-  async getInsightsDaily(dto: InsightsQueryDto): Promise<InsightRow[]> {
-    return this.getInsightRows(dto, { daily: true })
-  }
-
-  private getInsightLevel(dto: InsightsQueryDto): LevelDto {
-    return dto.accountId ||
-      dto.campaignId ||
-      (dto.campaignIds && dto.campaignIds.length > 0) ||
-      dto.status
-      ? Object.assign(new LevelDto(), { campaign: 'campaign' })
-      : Object.assign(new LevelDto(), { account: 'account' })
-  }
-
-  private async getInsightRows(
-    dto: InsightsQueryDto,
-    options: { daily?: boolean },
-  ): Promise<InsightRow[]> {
-    const levelDto = this.getInsightLevel(dto)
-    const fields = options.daily
-      ? DAILY_INSIGHTS_FIELDS
-      : `${INSIGHTS_FIELDS},account_id,account_name`
-    const params = {
-      fields,
-      ...(options.daily && { time_increment: 1 }),
-      ...this.timeParams(dto),
-      ...this.filterParams(dto, levelDto),
-      level: levelDto.campaign || levelDto.account || 'account',
-    }
-    return this.fetchFromAccounts<InsightRow>(
-      '/insights',
-      params,
-      dto,
-      options.daily ? 'daily insights' : 'insights',
-    )
-  }
-
-  async getAds(dto: InsightsQueryDto): Promise<AdsByAdSetDto[]> {
-    const level = Object.assign(new LevelDto(), { ad: 'ad' })
-    const params = { fields: AD_FIELDS, ...this.filterParams(dto, level) }
-    const ads = await this.fetchFromAccounts<AdDto>('/ads', params, dto, 'ads')
-    return this.groupAdsByAdSet(ads)
-  }
-
-  private groupAdsByAdSet(ads: AdDto[]): AdsByAdSetDto[] {
-    const byAdSet = new Map<string, { adSet: { id: string; name: string }; ads: AdDto[] }>()
-    for (const ad of ads) {
-      const id = ad.adset_id
-      const name = ad.adset?.name ?? ad.adset_id
-      const existing = byAdSet.get(id)
-      if (existing) {
-        existing.ads.push(ad)
-      } else {
-        byAdSet.set(id, { adSet: { id, name }, ads: [ad] })
-      }
-    }
-    return Array.from(byAdSet.values())
-  }
-
-  async getPerformanceData(dto: InsightsQueryDto): Promise<PerformanceDto> {
-    const [summaryRows, dailyRows, adsetSummaryRows, adsetDailyRows, adsFlat] = await Promise.all([
-      this.getInsights(dto),
-      this.getInsightsDaily(dto),
-      this.getInsightRowsAtAdSetLevel(dto, { daily: false }),
-      this.getInsightRowsAtAdSetLevel(dto, { daily: true }),
-      this.fetchAdsFlat(dto),
-    ])
-
-    const byAdSet = this.buildByAdSet(adsetSummaryRows, adsetDailyRows, adsFlat)
-
-    return {
-      summary: this.toSummaryMetrics(summaryRows),
-      chart: this.toDailyChart(dailyRows),
-      byAdSet,
-      ads: adsFlat,
-    }
-  }
-
-  private async fetchAdsFlat(dto: InsightsQueryDto): Promise<AdDto[]> {
-    const level = Object.assign(new LevelDto(), { ad: 'ad' })
-    const params = { fields: AD_FIELDS, ...this.filterParams(dto, level) }
-    return this.fetchFromAccounts<AdDto>('/ads', params, dto, 'ads')
-  }
-
-  private async getInsightRowsAtAdSetLevel(
-    dto: InsightsQueryDto,
-    options: { daily?: boolean },
-  ): Promise<InsightRow[]> {
-    const levelDto = this.getInsightLevel(dto)
-    const fields = options.daily ? DAILY_INSIGHTS_FIELDS_ADSET : INSIGHTS_FIELDS_ADSET
-    const params = {
-      fields,
-      ...(options.daily && { time_increment: 1 }),
-      ...this.timeParams(dto),
-      ...this.filterParams(dto, levelDto),
-      level: 'adset',
-    }
-    return this.fetchFromAccounts<InsightRow>(
-      '/insights',
-      params,
-      dto,
-      options.daily ? 'adset daily insights' : 'adset insights',
-    )
-  }
-
-  private buildByAdSet(
-    adsetSummaryRows: InsightRow[],
-    adsetDailyRows: InsightRow[],
-    ads: AdDto[],
-  ): PerformanceDto['byAdSet'] {
-    const adSetIds = new Set<string>()
-    for (const r of adsetSummaryRows) {
-      if (r.adset_id && r.adset_name) adSetIds.add(r.adset_id)
-    }
-    if (adSetIds.size === 0) {
-      for (const r of adsetDailyRows) {
-        if (r.adset_id && r.adset_name) adSetIds.add(r.adset_id)
-      }
-    }
-    if (adSetIds.size === 0) {
-      for (const ad of ads) adSetIds.add(ad.adset_id)
-    }
-
-    const byAdSet: PerformanceDto['byAdSet'] = []
-    for (const adSetId of adSetIds) {
-      const adsetName =
-        adsetSummaryRows.find((r) => r.adset_id === adSetId)?.adset_name ??
-        adsetDailyRows.find((r) => r.adset_id === adSetId)?.adset_name ??
-        ads.find((a) => a.adset_id === adSetId)?.adset?.name ??
-        adSetId
-
-      const summaryRows = adsetSummaryRows.filter((r) => r.adset_id === adSetId)
-      const dailyRows = adsetDailyRows.filter((r) => r.adset_id === adSetId)
-      const adSetAds = ads.filter((a) => a.adset_id === adSetId)
-
-      byAdSet.push({
-        adSet: { id: adSetId, name: adsetName },
-        summary: this.toSummaryMetrics(summaryRows),
-        chart: this.toDailyChart(dailyRows),
-        ads: adSetAds,
-      })
-    }
-    return byAdSet
-  }
-
-  toSummaryMetrics(rows: InsightRow[]): SummaryMetricsDto {
-    const acc = rows.reduce(
-      (a, r) => {
-        const parsed = this.parseInsightRow(r)
-        return {
-          spend: a.spend + parsed.spend,
-          impressions: a.impressions + parsed.impressions,
-          reach: a.reach + parsed.reach,
-          linkClicks: a.linkClicks + parsed.linkClicks,
-          campaigns:
-            parsed.campaignId && parsed.campaignName
-              ? a.campaigns.set(parsed.campaignId, parsed.campaignName)
-              : a.campaigns,
-          accountId: a.accountId || parsed.accountId,
-          accountName: a.accountName || parsed.accountName,
-        }
-      },
-      {
-        spend: 0,
-        impressions: 0,
-        reach: 0,
-        linkClicks: 0,
-        campaigns: new Map<string, string>(),
-        accountId: '',
-        accountName: '',
-      },
-    )
-
-    const campaigns = Array.from(acc.campaigns.entries()).map(([id, name]) => ({ id, name }))
-
-    return {
-      spend: Number(acc.spend.toFixed(2)),
-      results: acc.linkClicks,
-      cpa: acc.linkClicks > 0 ? Number((acc.spend / acc.linkClicks).toFixed(2)) : 0,
-      reach: acc.reach,
-      impressions: acc.impressions,
-      ctr: acc.impressions > 0 ? Number(((acc.linkClicks / acc.impressions) * 100).toFixed(2)) : 0,
-      cpm: acc.impressions > 0 ? Number(((acc.spend / acc.impressions) * 1000).toFixed(2)) : 0,
-      details: {
-        account_id: acc.accountId || undefined,
-        account_name: acc.accountName || undefined,
-        campaigns: campaigns.length > 0 ? campaigns : undefined,
-      },
-    }
-  }
-
-  private parseInsightRow(r: InsightRow): {
-    spend: number
-    impressions: number
-    reach: number
-    linkClicks: number
-    campaignId?: string
-    campaignName?: string
-    accountId?: string
-    accountName?: string
-  } {
-    const linkClicks = parseInt(
-      r.actions?.find((a) => a.action_type === 'link_click')?.value || '0',
-      10,
-    )
-    return {
-      spend: parseFloat(r.spend || '0'),
-      impressions: parseInt(r.impressions || '0', 10),
-      reach: parseInt(r.reach || '0', 10),
-      linkClicks,
-      campaignId: r.campaign_id,
-      campaignName: r.campaign_name,
-      accountId: r.account_id,
-      accountName: r.account_name,
-    }
-  }
-
-  toDailyChart(rows: InsightRow[]): DailyChartPointDto[] {
-    const byDate: Record<string, { spend: number; impressions: number }> = {}
-
-    for (const r of rows) {
-      const date = r.date_start || ''
-      if (!date) continue
-      if (!byDate[date]) byDate[date] = { spend: 0, impressions: 0 }
-      byDate[date].spend += parseFloat(r.spend || '0')
-      byDate[date].impressions += parseInt(r.impressions || '0', 10)
-    }
-
-    return Object.entries(byDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, val]) => ({
-        date,
-        spend: Number(val.spend.toFixed(2)),
-        impressions: val.impressions,
-      }))
+    return map
   }
 }
