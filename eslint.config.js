@@ -20,6 +20,11 @@ module.exports = [
       'node_modules/**',
       'package-lock.json',
       'tsconfig.json',
+      'create-test-user.js',
+      'update-user-password.js',
+      'test-all-campaigns.js',
+      'test-errors.js',
+      'test-performance.js',
     ],
   },
   ...fixupConfigRules(
