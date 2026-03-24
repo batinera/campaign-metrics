@@ -15,6 +15,9 @@ export class ErrorCode {
 
   static FB_API_ERROR = new BadRequestException('FB_API_ERROR')
   static ACCOUNT_NOT_FOUND = new NotFoundException('ACCOUNT_NOT_FOUND')
+  static CAMPAIGN_NOT_FOUND = new NotFoundException('CAMPAIGN_NOT_FOUND')
+  static ADSET_NOT_FOUND = new NotFoundException('ADSET_NOT_FOUND')
+  static AD_NOT_FOUND = new NotFoundException('AD_NOT_FOUND')
   static INSUFFICIENT_PERMISSIONS = new ForbiddenException('INSUFFICIENT_PERMISSIONS')
 
   static INTERNAL_SERVER_ERROR = new InternalServerErrorException('INTERNAL_SERVER_ERROR')
