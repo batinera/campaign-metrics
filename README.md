@@ -1,6 +1,6 @@
 # Campaign Metrics API 📊
 
-Backend NestJS para extração e agregação de métricas do Meta Ads (Facebook Ads). Focado em fornecer dados limpos para dashboards de performance.
+Backend NestJS com **GraphQL** para extração e agregação de métricas do Meta Ads (Facebook Ads). Focado em fornecer dados limpos para dashboards de performance.
 
 ## 🚀 Configuração Rápida
 
@@ -48,83 +48,116 @@ A API utiliza **JWT (JSON Web Token)**. Após rodar o `seed` (passo 3), você te
 
 > _Nota: O script de seed garante que o usuário `admin` exista no banco para fins de desenvolvimento._
 
-### 2. Utilizar Token
+### Utilizar Token
 
-Em todas as requisições para `/facebook/*`, envie o cabeçalho:
+Em todas as requisições GraphQL, envie o cabeçalho:
 `Authorization: Bearer <seu_access_token>`
 
 ---
 
-## 📡 Endpoints Disponíveis
+## 📡 API GraphQL
 
-**Filtros comuns** (quando aplicável):
+A API expõe **um único endpoint**: `POST /graphql`
 
-- `datePreset`: `today`, `yesterday`, `last_7d`, `last_30d`, etc.
-- `dateStart` e `dateEnd`: No formato `YYYY-MM-DD` para períodos personalizados.
-- `accountId`, `campaignId`, `campaignIds`, `status`: Filtros por conta, campanha e status.
+- **Playground:** `GET http://localhost:3000/graphql` (interface interativa para testar queries)
 
-**Ordenação** (apenas no endpoint de campanhas):
+### Queries Disponíveis
 
-- `sortBy`: `name` (alfabética) ou `created_time` (por data de criação).
-- `sortOrder`: `asc` (crescente) ou `desc` (decrescente).
+#### 1. accounts
 
-### 1. Listar Contas
+Lista todas as contas de anúncios vinculadas ao token.
 
-**GET** `/facebook/accounts`
+```graphql
+query {
+  accounts {
+    id
+    accountId
+    name
+    currency
+  }
+}
+```
 
-- Retorna todas as contas de anúncios vinculadas ao token. Útil para preencher filtros de "Seleção de Cliente" no Admin.
+#### 2. campaigns
 
-### 2. Listar Campanhas
+Retorna a hierarquia completa: campanhas → grupos de anúncio (ad sets) → anúncios, com métricas (summary, chart) em cada nível.
 
-**GET** `/facebook/campaigns`
+**Argumentos (opcional):**
 
-- Retorna todas as campanhas com seus **grupos de anúncio (ad sets)** aninhados.
-- Cada campanha inclui `adSets`: array com os ad sets da campanha.
-- **Query Params**:
-  - `accountId` (opcional): ID da conta (`act_...`).
-  - `campaignId`, `campaignIds`, `status`, `datePreset`, `dateStart`, `dateEnd`: Filtros comuns.
-  - **Ordenação**:
-    - `sortBy` (opcional): Critério de ordenação. Valores: `name` (alfabética) ou `created_time` (por data de criação). **Padrão:** `created_time`.
-    - `sortOrder` (opcional): Direção da ordenação. Valores: `asc` (crescente) ou `desc` (decrescente). **Padrão:** `desc`.
-- **Exemplos de ordenação**:
-  - Ordem alfabética A-Z: `?sortBy=name&sortOrder=asc`
-  - Ordem alfabética Z-A: `?sortBy=name&sortOrder=desc`
-  - Campanhas mais recentes primeiro: `?sortBy=created_time&sortOrder=desc` (padrão)
-  - Campanhas mais antigas primeiro: `?sortBy=created_time&sortOrder=asc`
+- `filter`: objeto com `accountId`, `campaignId`, `campaignIds`, `status`, `datePreset`, `dateStart`, `dateEnd`, `sortBy`, `sortOrder`
 
-### 3. Listar Anúncios
+**Exemplo de query:**
 
-**GET** `/facebook/ads`
+```graphql
+query {
+  campaigns(
+    filter: {
+      accountId: "act_721084900278023"
+      status: ACTIVE
+      datePreset: last_7d
+      sortBy: name
+      sortOrder: asc
+    }
+  ) {
+    id
+    name
+    status
+    summary {
+      spend
+      results
+      cpa
+      reach
+      impressions
+      ctr
+      cpm
+    }
+    chart {
+      date
+      spend
+      impressions
+    }
+    adSets {
+      id
+      name
+      summary {
+        spend
+        results
+        cpa
+      }
+      chart {
+        date
+        spend
+        impressions
+      }
+      ads {
+        id
+        name
+        status
+        creative {
+          id
+          name
+          image_url
+        }
+      }
+    }
+  }
+}
+```
 
-- Retorna os anúncios **agrupados por grupo de anúncio (ad set)**.
-- **Retorno**: array de `{ adSet: { id, name }, ads: AdDto[] }`.
-- **Query Params**: `accountId`, `campaignId`, `campaignIds`, `status`, `datePreset`, `dateStart`, `dateEnd`.
+O cliente pode solicitar apenas os campos necessários, evitando over-fetching.
 
-### 4. Performance Consolidada (Ideal para Dashboards)
+### Filtros
 
-**GET** `/facebook/performance`
-
-- **O que faz**: Consolida o Resumo (Cards), os Dados do Gráfico e métricas **por grupo de anúncio (ad set)** em uma única chamada.
-- **Query Params**:
-  - `accountId` (opcional): ID da conta (`act_...`).
-  - `campaignId` (opcional): ID de uma campanha específica.
-  - `campaignIds` (opcional): Lista de IDs de campanhas (ex: `?campaignIds[]=id1&campaignIds[]=id2`).
-  - `status` (opcional): Filtro de status (`active`, `paused`, `archived`, `deleted`).
-  - `datePreset` (opcional): Atalhos de data. Valores aceitos: `today`, `yesterday`, `last_7d`, `last_14d`, `last_30d`, `this_month`, `last_month`, `maximum`.
-  - `dateStart` e `dateEnd` (opcional): Período personalizado no formato `YYYY-MM-DD`.
-- **Retorno**:
-  - `summary`: métricas consolidadas (spend, results, cpa, reach, impressions, ctr, cpm).
-  - `chart`: dados diários globais para gráfico.
-  - `byAdSet`: array com métricas **separadas por grupo de anúncio** (cada item inclui `adSet`, `summary`, `chart`, `ads`).
-  - `ads`: lista completa de anúncios.
-
-#### Exemplos de Filtros de Data:
-
-- **Apenas hoje**: `?datePreset=today`
-- **Últimos 30 dias**: `?datePreset=last_30d`
-- **Mês atual**: `?datePreset=this_month`
-- **Período específico**: `?dateStart=2024-01-01&dateEnd=2024-01-15`
-- **Um único dia específico**: `?dateStart=2024-03-20&dateEnd=2024-03-20`
+| Campo               | Tipo       | Descrição                                                                      |
+| ------------------- | ---------- | ------------------------------------------------------------------------------ |
+| accountId           | String     | ID da conta (ex: `act_721084900278023`)                                        |
+| campaignId          | String     | ID de uma campanha específica                                                  |
+| campaignIds         | [String]   | Lista de IDs de campanhas                                                      |
+| status              | StatusEnum | ACTIVE, PAUSED, ARCHIVED, DELETED                                              |
+| datePreset          | String     | today, yesterday, last_7d, last_14d, last_30d, this_month, last_month, maximum |
+| dateStart / dateEnd | String     | Período no formato YYYY-MM-DD                                                  |
+| sortBy              | String     | name ou created_time                                                           |
+| sortOrder           | String     | asc ou desc                                                                    |
 
 ---
 
